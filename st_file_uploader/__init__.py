@@ -2,6 +2,8 @@ import os
 import streamlit as st
 import streamlit.components.v1 as components
 from streamlit.runtime.scriptrunner import get_script_run_ctx
+import base64
+from io import BytesIO
 from typing import (
     List,
     Any,
@@ -36,6 +38,95 @@ else:
     parent_dir = os.path.dirname(os.path.abspath(__file__))
     build_dir = os.path.join(parent_dir, "frontend/build")
     _component_func = components.declare_component(COMPONENT_NAME, path=build_dir)
+
+
+class StFileUploadedFile:
+    """Class that mimics a streamlit UploadedFile object."""
+    
+    def __init__(self, name, type, size, data_base64):
+        self.name = name
+        self.type = type
+        self.size = size
+        # Extract the actual base64 data (removing the data URL prefix)
+        if ',' in data_base64:
+            self.data = base64.b64decode(data_base64.split(',', 1)[1])
+        else:
+            self.data = base64.b64decode(data_base64)
+        self._file_obj = BytesIO(self.data)
+    
+    def read(self, size=-1):
+        """
+        Read at most size bytes from the file.
+        
+        Parameters:
+        size (int, optional): Number of bytes to read. If negative or omitted,
+                            read until EOF is reached.
+        
+        Returns:
+        bytes: The bytes read
+        """
+        self._file_obj.seek(0)
+        return self._file_obj.read(size)
+    
+    def getvalue(self):
+        """Return the file contents."""
+        self._file_obj.seek(0)
+        return self._file_obj.read()
+    
+    def seek(self, position, whence=0):
+        """
+        Seek to a position in the file.
+        
+        Parameters:
+        position (int): The position to seek to.
+        whence (int, optional): Reference point for position.
+            0 = start of file (default),
+            1 = current position,
+            2 = end of file
+        """
+        self._file_obj.seek(position, whence)
+    
+    def tell(self):
+        """Return the current position in the file."""
+        return self._file_obj.tell()
+
+    def __iter__(self):
+        """Iterate over the file object."""
+        self._file_obj.seek(0)
+        return iter(self._file_obj)
+
+    def readline(self, size=-1):
+        """
+        Read a line from the file.
+        
+        Parameters:
+        size (int, optional): Maximum number of bytes to read until newline.
+                            If negative or omitted, read until newline.
+        
+        Returns:
+        bytes: The line read from the file
+        """
+        return self._file_obj.readline(size)
+
+def _process_upload_data(component_value):
+    """Process component value into a file-like object."""
+    if component_value is None:
+        return None
+    
+    if isinstance(component_value, list):
+        # Multiple files
+        if not component_value:
+            return []
+        return [StFileUploadedFile(file["name"], file["type"], file["size"], file["data"]) 
+                for file in component_value]
+    else:
+        # Single file
+        return StFileUploadedFile(
+            component_value["name"],
+            component_value["type"],
+            component_value["size"],
+            component_value["data"]
+        )
 
 def file_uploader(
     label: str,
@@ -136,6 +227,9 @@ def file_uploader(
         maxUploadSize=max_upload_size
     )
     
+    # Process the component value into a file-like object
+    processed_value = _process_upload_data(component_value)
+    
     # Handle the callback
     if key is not None and on_change is not None:
         # Check if value changed
@@ -159,8 +253,8 @@ def file_uploader(
             # Call the callback
             on_change(*callback_args, **callback_kwargs)
     
-    # Return uploaded files
-    return component_value
+    # Return processed uploaded files
+    return processed_value
 
 # Create language-specific versions of the file uploader
 class LanguageFileUploader:

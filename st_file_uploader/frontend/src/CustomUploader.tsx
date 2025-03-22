@@ -20,6 +20,7 @@ interface State {
   hoverDeleteIndex: number | null;
   // Add a key to force input re-rendering
   fileInputKey: number;
+  instanceId: string;
 }
 
 // Get icon component dynamically from icon string
@@ -71,6 +72,7 @@ class CustomFileUploader extends StreamlitComponentBase<State> {
   constructor(props: any) {
     super(props);
     this.fileInputRef = React.createRef<HTMLInputElement>();
+    // Ensure each component instance has a unique ID
     this.state = {
       files: null,
       buttonHover: false,
@@ -78,7 +80,8 @@ class CustomFileUploader extends StreamlitComponentBase<State> {
       dragOver: false,
       processingFiles: false,
       hoverDeleteIndex: null,
-      fileInputKey: 0 // Add a key to force re-rendering of the input
+      fileInputKey: Math.random(), // More randomized key initialization
+      instanceId: `file-uploader-${Date.now()}-${Math.random()}` // Add a unique instance ID
     };
   }
   
@@ -424,18 +427,25 @@ class CustomFileUploader extends StreamlitComponentBase<State> {
     const files = event.target.files;
     if (!files || files.length === 0) return;
     
-    // Desactivar el procesamiento de archivos durante la gestión
+    // Prevent file processing during handling
     this.setState({ processingFiles: true });
     
     const fileArray = Array.from(files);
     const acceptMultipleFiles = this.props.args["acceptMultipleFiles"] || false;
     
-    // Usar setTimeout para dar tiempo al DOM para actualizar
-    setTimeout(() => {
+    // Create proper copies of the files
+    const filesCopy = acceptMultipleFiles 
+      ? fileArray.map(f => new File([f], f.name, { type: f.type, lastModified: f.lastModified })) 
+      : [new File([fileArray[0]], fileArray[0].name, { type: fileArray[0].type, lastModified: fileArray[0].lastModified })];
+    
+    // Use requestAnimationFrame for better handling
+    requestAnimationFrame(() => {
       this.setState({ 
-        files: acceptMultipleFiles ? fileArray : [fileArray[0]] 
-      }, this.updateStreamlit);
-    }, 10);
+        files: filesCopy
+      }, () => {
+        requestAnimationFrame(this.updateStreamlit);
+      });
+    });
   };
 
   private removeFile = (index: number): void => {
@@ -457,28 +467,35 @@ class CustomFileUploader extends StreamlitComponentBase<State> {
   private updateStreamlit = (): void => {
     const { files } = this.state;
     const acceptMultipleFiles = this.props.args["acceptMultipleFiles"] || false;
+  
+    if (!files || files.length === 0) {
+      Streamlit.setComponentValue(acceptMultipleFiles ? [] : null);
+      return;
+    }
     
-    // Usar setTimeout en lugar de Promise.resolve para dar tiempo al DOM
-    setTimeout(() => {
-      this.setState({ processingFiles: false }, () => {
-        if (!files || files.length === 0) {
-          Streamlit.setComponentValue(acceptMultipleFiles ? [] : null);
-          return;
-        }
-        
-        // Procesar los archivos de manera más eficiente
-        const processedFiles = files.map(file => ({
-          name: file.name,
-          type: file.type,
-          size: file.size,
-          data: file
-        }));
-        
-        // Enviar los datos procesados a Streamlit
-        Streamlit.setComponentValue(acceptMultipleFiles ? processedFiles : processedFiles[0]);
+    // Función para leer un archivo y devolver un objeto con los datos en base64
+    const readFile = (file: File): Promise<any> => {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          resolve({
+            name: file.name,
+            type: file.type,
+            size: file.size,
+            // reader.result es la cadena base64, p.ej. "data:<mime>;base64,<data>"
+            data: reader.result
+          });
+        };
+        reader.readAsDataURL(file);
       });
-    }, 50); // Pequeño retraso para permitir la finalización del renderizado
-  };
+    };
+  
+    // Procesar todos los archivos y enviar el resultado a Streamlit
+    Promise.all(files.map(readFile)).then((processedFiles) => {
+      Streamlit.setComponentValue(acceptMultipleFiles ? processedFiles : processedFiles[0]);
+      this.setState({ processingFiles: false });
+    });
+  };  
 }
 
 export default withStreamlitConnection(CustomFileUploader);
