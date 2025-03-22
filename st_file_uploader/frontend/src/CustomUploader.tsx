@@ -472,7 +472,7 @@ class CustomFileUploader extends StreamlitComponentBase<State> {
       Streamlit.setComponentValue(acceptMultipleFiles ? [] : null);
       return;
     }
-    
+  
     // Función para leer un archivo y devolver un objeto con los datos en base64
     const readFile = (file: File): Promise<any> => {
       return new Promise((resolve) => {
@@ -482,9 +482,13 @@ class CustomFileUploader extends StreamlitComponentBase<State> {
             name: file.name,
             type: file.type,
             size: file.size,
-            // reader.result es la cadena base64, p.ej. "data:<mime>;base64,<data>"
             data: reader.result
           });
+        };
+        reader.onerror = (error) => {
+          console.error("Error al leer el archivo:", error);
+          // Resolver con null para evitar bloquear el procesamiento
+          resolve(null);
         };
         reader.readAsDataURL(file);
       });
@@ -492,7 +496,9 @@ class CustomFileUploader extends StreamlitComponentBase<State> {
   
     // Procesar todos los archivos y enviar el resultado a Streamlit
     Promise.all(files.map(readFile)).then((processedFiles) => {
-      Streamlit.setComponentValue(acceptMultipleFiles ? processedFiles : processedFiles[0]);
+      // Filtrar archivos nulos en caso de error de lectura
+      const validFiles = processedFiles.filter(file => file !== null);
+      Streamlit.setComponentValue(acceptMultipleFiles ? validFiles : validFiles[0] || null);
       this.setState({ processingFiles: false });
     });
   };  

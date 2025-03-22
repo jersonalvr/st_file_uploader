@@ -40,21 +40,32 @@ def main():
         if st.button("Insertar en documento"):
             try:
                 with st.spinner("Procesando documento..."):
+                    # Abrir documento Word
                     doc_bytes = BytesIO(docx_file.getvalue())
                     doc = Document(doc_bytes)
                     
+                    # Extraer texto del PDF
                     texto_pdf = extraer_texto_pdf(pdf_file)
                     doc.add_paragraph(texto_pdf)
                     
+                    # Procesar imagen con PIL y remover fondo con rembg
                     img_bytes = BytesIO(image_file.getvalue())
                     image = Image.open(img_bytes)
-                    image.save(img_bytes, format="PNG")
-                    img_bytes.seek(0)
                     
+                    # Elimina el fondo de la imagen usando rembg
+                    image_sin_fondo = remove(image)
+                    
+                    # Guardar la imagen procesada en un objeto BytesIO en formato PNG
+                    output_image = BytesIO()
+                    image_sin_fondo.save(output_image, format="PNG")
+                    output_image.seek(0)
+                    
+                    # Insertar imagen en el documento
                     paragraph = doc.add_paragraph()
                     run = paragraph.add_run()
-                    run.add_picture(img_bytes, height=Cm(5))
+                    run.add_picture(output_image, height=Cm(5))
                     
+                    # Guardar documento modificado
                     output_doc = BytesIO()
                     doc.save(output_doc)
                     output_doc.seek(0)
@@ -68,7 +79,6 @@ def main():
             except Exception as e:
                 st.error(f"Error al procesar el documento: {e}")
     
-    # Ejemplos adicionales de uso del componente personalizado
     st.header("Ejemplos de uso del File Uploader personalizado")
     
     with st.container():

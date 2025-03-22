@@ -39,21 +39,19 @@ else:
     build_dir = os.path.join(parent_dir, "frontend/build")
     _component_func = components.declare_component(COMPONENT_NAME, path=build_dir)
 
-
 class StFileUploadedFile:
-    """Class that mimics a streamlit UploadedFile object."""
-    
     def __init__(self, name, type, size, data_base64):
         self.name = name
         self.type = type
         self.size = size
-        # Extract the actual base64 data (removing the data URL prefix)
+        # Extraer los datos base64 eliminando el prefijo de URL de datos
         if ',' in data_base64:
             self.data = base64.b64decode(data_base64.split(',', 1)[1])
         else:
             self.data = base64.b64decode(data_base64)
         self._file_obj = BytesIO(self.data)
-    
+        self._file_obj.seek(0)  # Reinicia el puntero para que PIL lea desde el inicio
+
     def read(self, size=-1):
         """
         Read at most size bytes from the file.
